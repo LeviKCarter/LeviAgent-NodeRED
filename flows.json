@@ -1,0 +1,75 @@
+[
+  {
+    "id": "f1a0000000000001",
+    "type": "tab",
+    "label": "LeviAgent Gateway Health",
+    "disabled": false,
+    "info": "Authenticated localhost-only health surface for the Node-RED strangler-migration runtime."
+  },
+  {
+    "id": "f1a0000000000002",
+    "type": "http in",
+    "z": "f1a0000000000001",
+    "name": "GET gateway health",
+    "url": "/v1/health",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 170,
+    "y": 100,
+    "wires": [
+      [
+        "f1a0000000000003"
+      ]
+    ]
+  },
+  {
+    "id": "f1a0000000000003",
+    "type": "function",
+    "z": "f1a0000000000001",
+    "name": "Return bounded status",
+    "func": "msg.statusCode = 200;\nmsg.headers = { 'content-type': 'application/json', 'cache-control': 'no-store' };\nmsg.payload = {\n  status: 'NODE_RED_GATEWAY_READY',\n  gateway: 'leviagent-nodered',\n  phase: 'bootstrap',\n  google_sheets_pilot_enabled: false\n};\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 100,
+    "wires": [
+      [
+        "f1a0000000000004"
+      ]
+    ]
+  },
+  {
+    "id": "f1a0000000000004",
+    "type": "http response",
+    "z": "f1a0000000000001",
+    "name": "Health response",
+    "statusCode": "",
+    "headers": {},
+    "x": 670,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "f1a0000000000010",
+    "type": "tab",
+    "label": "Google Sheets Pilot - job_tracker_update",
+    "disabled": true,
+    "info": "Disabled-by-default contract for the first Google Sheets migration. It has no credentials and performs no Google operation. Enabling requires a separate reviewed implementation and authorization."
+  },
+  {
+    "id": "f1a0000000000011",
+    "type": "comment",
+    "z": "f1a0000000000010",
+    "name": "Migration contract",
+    "info": "Future LeviAgent action: invoke_flow(job_tracker_update, payload). LeviAgent retains request authentication, workspace/action allowlists, write authorization, idempotency key creation, and audit recording. Node-RED will own the bounded Google Sheets call, retry/backoff, and a structured result. This tab remains disabled until credential handling and exact spreadsheet/range policy are independently reviewed.",
+    "x": 190,
+    "y": 80,
+    "wires": []
+  }
+]
+

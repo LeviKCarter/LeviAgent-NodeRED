@@ -1,0 +1,47 @@
+name: leviagent-nodered
+
+services:
+  gateway:
+    image: nodered/node-red@sha256:10f40d0a83e7e5852b13d4d472b2006b05b1cca6d55e2f29a55a12c25a630cb6
+    container_name: leviagent-nodered
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "127.0.0.1:1880:1880"
+    environment:
+      TZ: America/Denver
+      NODE_RED_ENABLE_PROJECTS: "false"
+    volumes:
+      - nodered-data:/data
+      - ./settings.js:/data/settings.js:ro
+      - ./flows.json:/data/flows.json:ro
+    secrets:
+      - nodered_credential_secret
+      - leviagent_gateway_token
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:1880/leviagent/v1/health').then(r=>process.exit(r.status===401?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  nodered-data:
+    name: leviagent-nodered-data
+
+secrets:
+  nodered_credential_secret:
+    file: ./.secrets/nodered_credential_secret
+  leviagent_gateway_token:
+    file: ./.secrets/leviagent_gateway_token
+

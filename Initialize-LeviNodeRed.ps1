@@ -1,0 +1,56 @@
+[CmdletBinding()]
+param()
+
+$ErrorActionPreference = "Stop"
+$ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$SecretsDir = Join-Path $ProjectDir ".secrets"
+
+function New-Base64UrlSecret([int]$ByteCount) {
+    $bytes = [byte[]]::new($ByteCount)
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    return [Convert]::ToBase64String($bytes).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+}
+
+function Set-SecretFileAcl([string]$Path) {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $acl = [Security.AccessControl.FileSecurity]::new()
+    $acl.SetAccessRuleProtection($true, $false)
+    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+        $identity,
+        [Security.AccessControl.FileSystemRights]::FullControl,
+        [Security.AccessControl.AccessControlType]::Allow
+    ))
+    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+        "NT AUTHORITY\SYSTEM",
+        [Security.AccessControl.FileSystemRights]::FullControl,
+        [Security.AccessControl.AccessControlType]::Allow
+    ))
+    Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
+function Ensure-SecretFile([string]$Path, [int]$ByteCount) {
+    if (Test-Path -LiteralPath $Path) {
+        $existing = [IO.File]::ReadAllText($Path).Trim()
+        if ($existing.Length -lt 32) {
+            throw "Existing secret is too short: $Path"
+        }
+    } else {
+        [IO.File]::WriteAllText(
+            $Path,
+            (New-Base64UrlSecret -ByteCount $ByteCount),
+            [Text.UTF8Encoding]::new($false)
+        )
+    }
+    Set-SecretFileAcl -Path $Path
+}
+
+New-Item -ItemType Directory -Path $SecretsDir -Force | Out-Null
+Ensure-SecretFile -Path (Join-Path $SecretsDir "nodered_credential_secret") -ByteCount 48
+Ensure-SecretFile -Path (Join-Path $SecretsDir "leviagent_gateway_token") -ByteCount 48
+
+docker compose --project-directory $ProjectDir -f (Join-Path $ProjectDir "compose.yaml") up -d
+if ($LASTEXITCODE -ne 0) {
+    throw "Docker Compose failed to start LeviAgent Node-RED"
+}
+
+Write-Host "LeviAgent Node-RED started on http://127.0.0.1:1880 with the editor disabled."
