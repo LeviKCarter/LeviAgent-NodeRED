@@ -15,12 +15,22 @@ const SHEETS_BASE = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET
 const MAX_REQUEST_BYTES = 2048;
 const MAX_RESPONSE_BYTES = 16384;
 const MAX_VALUE_CHARS = 256;
+const RETRYABLE_GOOGLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const SHEETS_RETRY_DELAYS_MS = Object.freeze([2000, 8000, 20000]);
 
 class FlowPolicyError extends Error {
     constructor(message, code = "FLOW_POLICY_REJECTED") {
         super(message);
         this.name = "FlowPolicyError";
         this.code = code;
+    }
+}
+
+class GoogleHttpError extends Error {
+    constructor(message, status) {
+        super(message);
+        this.name = "GoogleHttpError";
+        this.status = status;
     }
 }
 
@@ -94,6 +104,9 @@ function parseCredential(path) {
 function createJobTrackerGoogle(options = {}) {
     const fetchImpl = options.fetchImpl || global.fetch;
     const now = options.now || (() => Date.now());
+    const delay = options.delayImpl || ((milliseconds) => new Promise(
+        (resolve) => setTimeout(resolve, milliseconds),
+    ));
     const credential = options.credential || parseCredential(
         options.credentialPath || "/run/secrets/google_service_account",
     );
@@ -113,7 +126,10 @@ function createJobTrackerGoogle(options = {}) {
         }
         if (!response.ok) {
             const code = body && body.error && body.error.code;
-            throw new Error(`${label} failed with HTTP ${response.status}${code ? ` (${code})` : ""}`);
+            throw new GoogleHttpError(
+                `${label} failed with HTTP ${response.status}${code ? ` (${code})` : ""}`,
+                response.status,
+            );
         }
         return body;
     }
@@ -155,18 +171,29 @@ function createJobTrackerGoogle(options = {}) {
     }
 
     async function sheetsRequest(range, init = {}) {
-        const token = await accessToken();
-        const url = `${SHEETS_BASE}/${encodeURIComponent(range)}${init.query || ""}`;
-        const response = await fetchImpl(url, {
-            method: init.method || "GET",
-            headers: {
-                authorization: `Bearer ${token}`,
-                ...(init.body ? { "content-type": "application/json" } : {}),
-            },
-            body: init.body ? JSON.stringify(init.body) : undefined,
-            signal: AbortSignal.timeout(10_000),
-        });
-        return boundedJson(response, "Google Sheets");
+        for (let attempt = 0; ; attempt += 1) {
+            const token = await accessToken();
+            const url = `${SHEETS_BASE}/${encodeURIComponent(range)}${init.query || ""}`;
+            try {
+                const response = await fetchImpl(url, {
+                    method: init.method || "GET",
+                    headers: {
+                        authorization: `Bearer ${token}`,
+                        ...(init.body ? { "content-type": "application/json" } : {}),
+                    },
+                    body: init.body ? JSON.stringify(init.body) : undefined,
+                    signal: AbortSignal.timeout(10_000),
+                });
+                return await boundedJson(response, "Google Sheets");
+            } catch (error) {
+                if (!(error instanceof GoogleHttpError) ||
+                    !RETRYABLE_GOOGLE_STATUS.has(error.status) ||
+                    attempt >= SHEETS_RETRY_DELAYS_MS.length) {
+                    throw error;
+                }
+                await delay(SHEETS_RETRY_DELAYS_MS[attempt]);
+            }
+        }
     }
 
     async function readTestRows() {
@@ -275,6 +302,7 @@ module.exports = {
     MAX_RESPONSE_BYTES,
     MAX_VALUE_CHARS,
     FlowPolicyError,
+    GoogleHttpError,
     validateInvocation,
     createJobTrackerGoogle,
 };

@@ -116,6 +116,27 @@ test("ambiguous write failure reconciles from the exact idempotency record", asy
     assert.equal(result.applied, false);
 });
 
+test("retryable Sheets quota response uses bounded adapter-owned backoff", async () => {
+    const delays = [];
+    const queue = [
+        response({ access_token: "x".repeat(32), expires_in: 3600 }),
+        response({ error: { code: 429 } }, 429),
+        response({ range: TEST_READ_RANGE, values: [] }),
+        response({ updatedRange: "'NodeRED Test'!A2:F2", updatedCells: 6 }),
+        response({ range: TEST_READ_RANGE, values: rowFor(invocation) }),
+    ];
+    const adapter = createJobTrackerGoogle({
+        credential,
+        now: () => Date.parse("2026-08-25T00:00:00Z"),
+        delayImpl: async (milliseconds) => { delays.push(milliseconds); },
+        fetchImpl: async () => queue.shift(),
+    });
+    const result = await adapter.invoke(invocation);
+    assert.equal(result.status, "FLOW_SUCCESS");
+    assert.deepEqual(delays, [2000]);
+    assert.equal(queue.length, 0);
+});
+
 test("a full dedicated range fails closed without an out-of-range write", async () => {
     const fullRows = Array.from({ length: 19 }, (_, index) => [
         `levi-request-${String(index).padStart(20, "0")}`,
