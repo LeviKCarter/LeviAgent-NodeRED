@@ -4,6 +4,11 @@ param()
 $ErrorActionPreference = "Stop"
 $ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SecretsDir = Join-Path $ProjectDir ".secrets"
+$GoogleCredentialPath = "C:\Users\levik\AppData\Local\LeviAgent\google-service-account.json"
+
+if (-not (Test-Path -LiteralPath $GoogleCredentialPath -PathType Leaf)) {
+    throw "LeviAgent Google service-account credential is unavailable: $GoogleCredentialPath"
+}
 
 function New-Base64UrlSecret([int]$ByteCount) {
     $bytes = [byte[]]::new($ByteCount)
@@ -13,19 +18,10 @@ function New-Base64UrlSecret([int]$ByteCount) {
 
 function Set-SecretFileAcl([string]$Path) {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-    $acl = [Security.AccessControl.FileSecurity]::new()
-    $acl.SetAccessRuleProtection($true, $false)
-    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
-        $identity,
-        [Security.AccessControl.FileSystemRights]::FullControl,
-        [Security.AccessControl.AccessControlType]::Allow
-    ))
-    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
-        "NT AUTHORITY\SYSTEM",
-        [Security.AccessControl.FileSystemRights]::FullControl,
-        [Security.AccessControl.AccessControlType]::Allow
-    ))
-    Set-Acl -LiteralPath $Path -AclObject $acl
+    & icacls.exe $Path /inheritance:r /grant:r "${identity}:(F)" "SYSTEM:(F)" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not apply the required ACL to secret file: $Path"
+    }
 }
 
 function Ensure-SecretFile([string]$Path, [int]$ByteCount) {

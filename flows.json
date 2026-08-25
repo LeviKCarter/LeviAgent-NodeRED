@@ -28,7 +28,7 @@
     "type": "function",
     "z": "f1a0000000000001",
     "name": "Return bounded status",
-    "func": "msg.statusCode = 200;\nmsg.headers = { 'content-type': 'application/json', 'cache-control': 'no-store' };\nmsg.payload = {\n  status: 'NODE_RED_GATEWAY_READY',\n  gateway: 'leviagent-nodered',\n  phase: 'bootstrap',\n  google_sheets_pilot_enabled: false\n};\nreturn msg;",
+    "func": "msg.statusCode = 200;\nmsg.headers = { 'content-type': 'application/json', 'cache-control': 'no-store' };\nmsg.payload = {\n  status: 'NODE_RED_GATEWAY_READY',\n  gateway: 'leviagent-nodered',\n  phase: 'job_tracker_pilot',\n  google_sheets_pilot_enabled: true,\n  enabled_flows: ['job_tracker_update']\n};\nreturn msg;",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,
@@ -58,18 +58,57 @@
     "id": "f1a0000000000010",
     "type": "tab",
     "label": "Google Sheets Pilot - job_tracker_update",
-    "disabled": true,
-    "info": "Disabled-by-default contract for the first Google Sheets migration. It has no credentials and performs no Google operation. Enabling requires a separate reviewed implementation and authorization."
+    "disabled": false,
+    "info": "Authenticated fixed job_tracker_update pilot. It can write only to the dedicated NodeRED Test range in LeviAgentQueue through the locally implemented adapter."
   },
   {
     "id": "f1a0000000000011",
     "type": "comment",
     "z": "f1a0000000000010",
-    "name": "Migration contract",
-    "info": "Future LeviAgent action: invoke_flow(job_tracker_update, payload). LeviAgent retains request authentication, workspace/action allowlists, write authorization, idempotency key creation, and audit recording. Node-RED will own the bounded Google Sheets call, retry/backoff, and a structured result. This tab remains disabled until credential handling and exact spreadsheet/range policy are independently reviewed.",
+    "name": "Fixed migration contract",
+    "info": "Only POST /v1/invoke/job_tracker_update is exposed. The adapter fixes the spreadsheet ID and NodeRED Test!A2:F20 range, rejects arbitrary flow names and fields, and reconciles writes by LeviAgent's request-derived idempotency key.",
     "x": 190,
     "y": 80,
     "wires": []
+  },
+  {
+    "id": "f1a0000000000012",
+    "type": "http in",
+    "z": "f1a0000000000010",
+    "name": "POST fixed job tracker update",
+    "url": "/v1/invoke/job_tracker_update",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 190,
+    "y": 150,
+    "wires": [["f1a0000000000013"]]
+  },
+  {
+    "id": "f1a0000000000013",
+    "type": "function",
+    "z": "f1a0000000000010",
+    "name": "Invoke fixed bounded adapter",
+    "func": "const adapter = global.get('jobTrackerGoogle');\nmsg.headers = { 'content-type': 'application/json', 'cache-control': 'no-store' };\ntry {\n  const result = await adapter.invoke(msg.payload);\n  msg.statusCode = 200;\n  msg.payload = result;\n} catch (error) {\n  const code = String(error.code || 'FLOW_EXECUTION_FAILED');\n  msg.statusCode = code === 'FLOW_IDEMPOTENCY_CONFLICT' ? 409 : (code.startsWith('FLOW_') ? 400 : 502);\n  msg.payload = { status: code, flow: 'job_tracker_update', error: String(error.message || error).slice(0, 1000) };\n}\nreturn msg;",
+    "outputs": 1,
+    "timeout": 15,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 490,
+    "y": 150,
+    "wires": [["f1a0000000000014"]]
+  },
+  {
+    "id": "f1a0000000000014",
+    "type": "http response",
+    "z": "f1a0000000000010",
+    "name": "Structured flow result",
+    "statusCode": "",
+    "headers": {},
+    "x": 760,
+    "y": 150,
+    "wires": []
   }
 ]
-

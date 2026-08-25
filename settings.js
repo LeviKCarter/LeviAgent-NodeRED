@@ -2,6 +2,7 @@
 
 const crypto = require("crypto");
 const fs = require("fs");
+const { createJobTrackerGoogle } = require("/data/lib/job_tracker_google.js");
 
 function readRequiredSecret(path, minimumLength) {
     const value = fs.readFileSync(path, "utf8").trim();
@@ -19,6 +20,9 @@ const gatewayToken = readRequiredSecret(
     "/run/secrets/leviagent_gateway_token",
     32,
 );
+const jobTrackerGoogle = createJobTrackerGoogle({
+    credentialPath: "/run/secrets/google_service_account",
+});
 
 function bearerTokenMatches(request) {
     const header = String(request.headers.authorization || "");
@@ -55,6 +59,11 @@ module.exports = {
     },
 
     credentialSecret,
+    functionGlobalContext: {
+        // This object exposes only one fixed, schema-checked operation. Flow
+        // functions never receive the Google service-account private key.
+        jobTrackerGoogle,
+    },
     functionExternalModules: false,
     exportGlobalContextKeys: false,
     contextStorage: {
@@ -70,4 +79,3 @@ module.exports = {
         },
     },
 };
-
