@@ -14,21 +14,21 @@ This repository is the first strangler-migration component beside LeviAgent. It 
 - The existing LeviAgent Google service-account credential is mounted read-only
   as a Docker secret. Flow functions cannot read it; only the fixed local
   `job_tracker_update` adapter can exchange it for a Sheets token.
-- The only Google write surface is `NodeRED Test!A2:F20` in the LeviAgentQueue
-  spreadsheet. The spreadsheet ID, tab, columns, and row bounds are constants.
+- The only Google write surface is `Applications!A1:A1` in the Denver Job
+  Application Tracker. The spreadsheet ID, tab, cell, and canonical
+  `Application Tier` value are constants.
 
 The active routes are authenticated `GET /leviagent/v1/health` and
 `POST /leviagent/v1/invoke/job_tracker_update`. The latter accepts exactly one
-typed value plus LeviAgent-derived request and idempotency identities. It
+fixed canonical value plus LeviAgent-derived request and idempotency identities. It
 rejects caller-selected URLs, ranges, spreadsheets, alternate flow names,
-formula-leading values, oversized bodies, conflicting replays, and writes
-beyond the dedicated test range.
+noncanonical values, oversized bodies, and writes beyond the single fixed cell.
 
 ## Start and verify
 
 Run `Initialize-LeviNodeRed.ps1` from a normal, non-elevated PowerShell session. It creates the local secrets if they do not already exist and starts the pinned container. Run `Test-LeviNodeRedHealth.ps1` to verify the authenticated health endpoint without printing the bearer token.
 
-## Authority split for the pilot flow
+## Authority split for the first production operation
 
 LeviAgent retains:
 
@@ -45,6 +45,7 @@ Node-RED receives one typed `job_tracker_update` payload and owns only:
 - response normalization;
 - returning a structured success or failure record.
 
-No real job-tracker range is reachable from this pilot. Migration of a real
-operation remains gated on a successful Sheet-to-LeviAgent-to-Node-RED
-round trip with matching durable audit evidence.
+The dedicated `NodeRED Test` tab remains as retained pilot evidence. The first
+real migrated operation is intentionally smaller than a generic tracker update:
+it can only restore the canonical `Applications!A1` header. Bulk row changes,
+appends, and caller-selected ranges remain outside this flow.

@@ -4,17 +4,16 @@ const crypto = require("crypto");
 const fs = require("fs");
 
 const FLOW_NAME = "job_tracker_update";
-const SPREADSHEET_ID = "1exmmZXT7_D07HKRCat0nmL3WI7xnqHw_seIblvF51Ug";
-const TEST_SHEET = "NodeRED Test";
-const TEST_START_ROW = 2;
-const TEST_END_ROW = 20;
-const TEST_READ_RANGE = `'${TEST_SHEET}'!A${TEST_START_ROW}:F${TEST_END_ROW}`;
+const SPREADSHEET_ID = "1tRYOraRTQiJG1roLLKkIZw5E_e5Sy9b1cwXYPwhusDQ";
+const TARGET_SHEET = "Applications";
+const TARGET_RANGE = `'${TARGET_SHEET}'!A1:A1`;
+const TARGET_VALUE = "Application Tier";
 const GOOGLE_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SHEETS_BASE = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values`;
 const MAX_REQUEST_BYTES = 2048;
 const MAX_RESPONSE_BYTES = 16384;
-const MAX_VALUE_CHARS = 256;
+const MAX_VALUE_CHARS = TARGET_VALUE.length;
 const RETRYABLE_GOOGLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const SHEETS_RETRY_DELAYS_MS = Object.freeze([2000, 8000, 20000]);
 
@@ -70,11 +69,10 @@ function validateInvocation(input) {
         throw new FlowPolicyError("payload must contain exactly value");
     }
     const value = input.payload.value;
-    if (typeof value !== "string" || !value.trim() || value.length > MAX_VALUE_CHARS) {
-        throw new FlowPolicyError(`payload.value must contain 1-${MAX_VALUE_CHARS} characters`);
-    }
-    if (/^[=+\-@]/.test(value) || /[\u0000-\u001f\u007f]/.test(value)) {
-        throw new FlowPolicyError("payload.value contains a prohibited formula prefix or control character");
+    if (value !== TARGET_VALUE) {
+        throw new FlowPolicyError(
+            `payload.value must be the fixed tracker header ${JSON.stringify(TARGET_VALUE)}`,
+        );
     }
     return {
         flow: FLOW_NAME,
@@ -196,94 +194,57 @@ function createJobTrackerGoogle(options = {}) {
         }
     }
 
-    async function readTestRows() {
-        const body = await sheetsRequest(TEST_READ_RANGE);
-        return Array.isArray(body.values) ? body.values : [];
-    }
-
-    function locate(rows, invocation) {
-        const matches = [];
-        let firstEmptyRow = null;
-        for (let offset = 0; offset <= TEST_END_ROW - TEST_START_ROW; offset += 1) {
-            const row = Array.isArray(rows[offset]) ? rows[offset] : [];
-            const key = String(row[0] || "");
-            if (!key && firstEmptyRow === null) {
-                firstEmptyRow = TEST_START_ROW + offset;
-            }
-            if (key === invocation.idempotency_key) {
-                matches.push({ sheet_row: TEST_START_ROW + offset, row });
-            }
-        }
-        if (matches.length > 1) {
-            throw new FlowPolicyError("Duplicate idempotency records exist in the test range", "FLOW_IDEMPOTENCY_CONFLICT");
-        }
-        if (matches.length === 1) {
-            const match = matches[0];
-            if (String(match.row[1] || "") !== invocation.request_id ||
-                String(match.row[2] || "") !== FLOW_NAME ||
-                String(match.row[3] || "") !== invocation.value ||
-                String(match.row[5] || "") !== "applied") {
-                throw new FlowPolicyError("Existing idempotency record does not match this request", "FLOW_IDEMPOTENCY_CONFLICT");
-            }
-            return { existing: match, firstEmptyRow };
-        }
-        return { existing: null, firstEmptyRow };
+    async function readTargetValue() {
+        const body = await sheetsRequest(TARGET_RANGE);
+        const rows = Array.isArray(body.values) ? body.values : [];
+        return rows.length && Array.isArray(rows[0]) ? String(rows[0][0] || "") : "";
     }
 
     async function invoke(rawInput) {
         const invocation = validateInvocation(rawInput);
-        const before = locate(await readTestRows(), invocation);
-        if (before.existing) {
+        const before = await readTargetValue();
+        if (before === TARGET_VALUE) {
             return {
                 status: "FLOW_SUCCESS",
                 flow: FLOW_NAME,
                 request_id: invocation.request_id,
                 idempotency_key: invocation.idempotency_key,
-                sheet: TEST_SHEET,
-                sheet_row: before.existing.sheet_row,
+                sheet: TARGET_SHEET,
+                sheet_row: 1,
                 applied: false,
                 replayed: true,
                 reconciled_after_error: false,
             };
         }
-        if (before.firstEmptyRow === null) {
-            throw new FlowPolicyError("Dedicated test range is full", "FLOW_RANGE_FULL");
-        }
-        const sheetRow = before.firstEmptyRow;
-        const writtenAt = new Date(now()).toISOString();
-        const values = [[
-            invocation.idempotency_key,
-            invocation.request_id,
-            FLOW_NAME,
-            invocation.value,
-            writtenAt,
-            "applied",
-        ]];
         let writeError = null;
         try {
-            await sheetsRequest(`'${TEST_SHEET}'!A${sheetRow}:F${sheetRow}`, {
+            await sheetsRequest(TARGET_RANGE, {
                 method: "PUT",
                 query: "?valueInputOption=RAW",
-                body: { range: `'${TEST_SHEET}'!A${sheetRow}:F${sheetRow}`, majorDimension: "ROWS", values },
+                body: {
+                    range: TARGET_RANGE,
+                    majorDimension: "ROWS",
+                    values: [[TARGET_VALUE]],
+                },
             });
         } catch (error) {
             writeError = error;
         }
 
-        const after = locate(await readTestRows(), invocation);
-        if (!after.existing || after.existing.sheet_row !== sheetRow) {
+        const after = await readTargetValue();
+        if (after !== TARGET_VALUE) {
             if (writeError) {
                 throw new Error(`Google Sheets write failed and could not be reconciled: ${writeError.message}`);
             }
-            throw new Error("Google Sheets post-write verification did not find the exact record");
+            throw new Error("Google Sheets post-write verification did not find the exact tracker header");
         }
         return {
             status: "FLOW_SUCCESS",
             flow: FLOW_NAME,
             request_id: invocation.request_id,
             idempotency_key: invocation.idempotency_key,
-            sheet: TEST_SHEET,
-            sheet_row: sheetRow,
+            sheet: TARGET_SHEET,
+            sheet_row: 1,
             applied: writeError === null,
             replayed: false,
             reconciled_after_error: writeError !== null,
@@ -296,8 +257,9 @@ function createJobTrackerGoogle(options = {}) {
 module.exports = {
     FLOW_NAME,
     SPREADSHEET_ID,
-    TEST_SHEET,
-    TEST_READ_RANGE,
+    TARGET_SHEET,
+    TARGET_RANGE,
+    TARGET_VALUE,
     MAX_REQUEST_BYTES,
     MAX_RESPONSE_BYTES,
     MAX_VALUE_CHARS,

@@ -28,7 +28,7 @@
     "type": "function",
     "z": "f1a0000000000001",
     "name": "Return bounded status",
-    "func": "msg.statusCode = 200;\nmsg.headers = { 'content-type': 'application/json', 'cache-control': 'no-store' };\nmsg.payload = {\n  status: 'NODE_RED_GATEWAY_READY',\n  gateway: 'leviagent-nodered',\n  phase: 'job_tracker_pilot',\n  google_sheets_pilot_enabled: true,\n  enabled_flows: ['job_tracker_update']\n};\nreturn msg;",
+    "func": "msg.statusCode = 200;\nmsg.headers = { 'content-type': 'application/json', 'cache-control': 'no-store' };\nmsg.payload = {\n  status: 'NODE_RED_GATEWAY_READY',\n  gateway: 'leviagent-nodered',\n  phase: 'job_tracker_first_production_operation',\n  google_sheets_pilot_enabled: true,\n  enabled_flows: ['job_tracker_update']\n};\nreturn msg;",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,
@@ -57,16 +57,16 @@
   {
     "id": "f1a0000000000010",
     "type": "tab",
-    "label": "Google Sheets Pilot - job_tracker_update",
+    "label": "Google Sheets - fixed job_tracker_update",
     "disabled": false,
-    "info": "Authenticated fixed job_tracker_update pilot. It can write only to the dedicated NodeRED Test range in LeviAgentQueue through the locally implemented adapter."
+    "info": "Authenticated fixed job_tracker_update operation. It can only ensure the Denver tracker Applications!A1 header equals Application Tier through the locally implemented adapter."
   },
   {
     "id": "f1a0000000000011",
     "type": "comment",
     "z": "f1a0000000000010",
     "name": "Fixed migration contract",
-    "info": "Only POST /v1/invoke/job_tracker_update is exposed. The adapter fixes the spreadsheet ID and NodeRED Test!A2:F20 range, rejects arbitrary flow names and fields, and reconciles writes by LeviAgent's request-derived idempotency key.",
+    "info": "Only POST /v1/invoke/job_tracker_update is exposed. The adapter fixes the Denver tracker spreadsheet ID, Applications!A1:A1, and the Application Tier value; it rejects arbitrary flow names and fields.",
     "x": 190,
     "y": 80,
     "wires": []
@@ -89,7 +89,7 @@
     "type": "function",
     "z": "f1a0000000000010",
     "name": "Invoke fixed bounded adapter",
-    "func": "const adapter = global.get('jobTrackerGoogle');\nmsg.headers = { 'content-type': 'application/json', 'cache-control': 'no-store' };\ntry {\n  const result = await adapter.invoke(msg.payload);\n  msg.statusCode = 200;\n  msg.payload = result;\n} catch (error) {\n  const code = String(error.code || 'FLOW_EXECUTION_FAILED');\n  msg.statusCode = code === 'FLOW_IDEMPOTENCY_CONFLICT' || code === 'FLOW_RANGE_FULL' ? 409 : (code === 'FLOW_POLICY_REJECTED' ? 400 : 502);\n  msg.payload = { status: code, flow: 'job_tracker_update', error: String(error.message || error).slice(0, 1000) };\n}\nreturn msg;",
+    "func": "const adapter = global.get('jobTrackerGoogle');\nmsg.headers = { 'content-type': 'application/json', 'cache-control': 'no-store' };\ntry {\n  const result = await adapter.invoke(msg.payload);\n  msg.statusCode = 200;\n  msg.payload = result;\n} catch (error) {\n  const code = String(error.code || 'FLOW_EXECUTION_FAILED');\n  msg.statusCode = code === 'FLOW_POLICY_REJECTED' ? 400 : 502;\n  msg.payload = { status: code, flow: 'job_tracker_update', error: String(error.message || error).slice(0, 1000) };\n}\nreturn msg;",
     "outputs": 1,
     "timeout": 55,
     "noerr": 0,
