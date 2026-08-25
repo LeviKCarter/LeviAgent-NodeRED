@@ -2,6 +2,25 @@
 
 This repository is the first strangler-migration component beside LeviAgent. It does not replace the Google Sheet ingress or grant Node-RED authority over LeviAgent policy.
 
+## Permanent authority boundary
+
+LeviAgent remains the permanent orchestrator. It owns Requests and Queue ingress,
+policy, authorization, idempotency ownership, model routing, promotion, deployment,
+and durable audit. Node-RED is optional integration infrastructure: if it is absent,
+only an explicitly invoked Node-RED operation fails; the worker and unrelated work
+continue normally.
+
+A flow is eligible only when LeviAgent registers its exact localhost endpoint and
+the operation uses an external connector plus at least one of scheduling, bounded
+retries, or credential isolation. Node-RED may own only fixed connector execution,
+bounded retries, credential isolation, and response normalization for that flow.
+It may never own Queue state, policy decisions, authorization, AI/model routing,
+arbitrary HTTP or Google operations, arbitrary commands, promotion, or deployment.
+
+New flows are added one at a time. Each must prove its fixed schema, idempotency,
+bounded failure behavior, structured result, and durable LeviAgent audit before an
+equivalent legacy integration path is disabled or removed.
+
 ## Current boundary
 
 - Docker image is pinned by digest to Node-RED 5.0.4.
