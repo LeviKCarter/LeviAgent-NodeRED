@@ -14,7 +14,7 @@ const SHEETS_BASE = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET
 const MAX_REQUEST_BYTES = 2048;
 const MAX_RESPONSE_BYTES = 16384;
 const MAX_VALUE_CHARS = TARGET_VALUE.length;
-const RETRYABLE_GOOGLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const RETRYABLE_GOOGLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 const SHEETS_RETRY_DELAYS_MS = Object.freeze([2000, 8000, 20000]);
 
 class FlowPolicyError extends Error {
@@ -31,6 +31,21 @@ class GoogleHttpError extends Error {
         this.name = "GoogleHttpError";
         this.status = status;
     }
+}
+
+function bearerTokenMatches(header, expectedToken) {
+    const authHeader = String(header || "");
+    const prefix = "Bearer ";
+    if (!authHeader.startsWith(prefix)) {
+        return false;
+    }
+    const supplied = Buffer.from(authHeader.slice(prefix.length), "utf8");
+    const expected = Buffer.from(String(expectedToken || ""), "utf8");
+    return (
+        supplied.length === expected.length &&
+        supplied.length >= 32 &&
+        crypto.timingSafeEqual(supplied, expected)
+    );
 }
 
 function base64Url(value) {
@@ -263,8 +278,11 @@ module.exports = {
     MAX_REQUEST_BYTES,
     MAX_RESPONSE_BYTES,
     MAX_VALUE_CHARS,
+    RETRYABLE_GOOGLE_STATUS,
+    SHEETS_RETRY_DELAYS_MS,
     FlowPolicyError,
     GoogleHttpError,
+    bearerTokenMatches,
     validateInvocation,
     createJobTrackerGoogle,
 };
