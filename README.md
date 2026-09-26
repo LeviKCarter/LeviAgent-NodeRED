@@ -1,16 +1,20 @@
-# LeviAgent Node-RED migration runtime
+# Pulse Agent Node-RED migration runtime
 
-This repository is the first strangler-migration component beside LeviAgent. It does not replace the Google Sheet ingress or grant Node-RED authority over LeviAgent policy.
+Formerly **LeviAgent Node-RED**. This documentation uses the Pulse Agent name.
+Existing `/leviagent/` routes, launcher filenames, and container identifiers retain
+their compatibility names; this rename does not change runtime flows or authority.
+
+This repository is the first strangler-migration component beside Pulse Agent. It does not replace the Google Sheet ingress or grant Node-RED authority over Pulse Agent policy.
 
 ## Permanent authority boundary
 
-LeviAgent remains the permanent orchestrator. It owns Requests and Queue ingress,
+Pulse Agent remains the permanent orchestrator. It owns Requests and Queue ingress,
 policy, authorization, idempotency ownership, model routing, promotion, deployment,
 and durable audit. Node-RED is optional integration infrastructure: if it is absent,
 only an explicitly invoked Node-RED operation fails; the worker and unrelated work
 continue normally.
 
-A flow is eligible only when LeviAgent registers its exact localhost endpoint and
+A flow is eligible only when Pulse Agent registers its exact localhost endpoint and
 the operation uses an external connector plus at least one of scheduling, bounded
 retries, or credential isolation. Node-RED may own only fixed connector execution,
 bounded retries, credential isolation, and response normalization for that flow.
@@ -18,7 +22,7 @@ It may never own Queue state, policy decisions, authorization, AI/model routing,
 arbitrary HTTP or Google operations, arbitrary commands, promotion, or deployment.
 
 New flows are added one at a time. Each must prove its fixed schema, idempotency,
-bounded failure behavior, structured result, and durable LeviAgent audit before an
+bounded failure behavior, structured result, and durable Pulse Agent audit before an
 equivalent legacy integration path is disabled or removed.
 
 ## Current boundary
@@ -30,7 +34,7 @@ equivalent legacy integration path is disabled or removed.
 - Runtime secrets live in the ignored `.secrets` directory with Windows ACLs limited to the current user and SYSTEM.
 - The container drops Linux capabilities, enables `no-new-privileges`, and uses a read-only root filesystem.
 - `functionExternalModules` is disabled.
-- The existing LeviAgent Google service-account credential is mounted read-only
+- The existing Pulse Agent Google service-account credential is mounted read-only
   as a Docker secret. Flow functions cannot read it; only the fixed local
   `job_tracker_update` adapter can exchange it for a Sheets token.
 - The only Google write surface is `Applications!A1:A1` in the Denver Job
@@ -39,7 +43,7 @@ equivalent legacy integration path is disabled or removed.
 
 The active routes are authenticated `GET /leviagent/v1/health` and
 `POST /leviagent/v1/invoke/job_tracker_update`. The latter accepts exactly one
-fixed canonical value plus LeviAgent-derived request and idempotency identities. It
+fixed canonical value plus Pulse Agent-derived request and idempotency identities. It
 rejects caller-selected URLs, ranges, spreadsheets, alternate flow names,
 noncanonical values, oversized bodies, and writes beyond the single fixed cell.
 
@@ -49,7 +53,7 @@ Run `Initialize-LeviNodeRed.ps1` from a normal, non-elevated PowerShell session.
 
 ## Authority split for the first production operation
 
-LeviAgent retains:
+Pulse Agent retains:
 
 - Sheet request authentication and validation;
 - action and workspace allowlists;
